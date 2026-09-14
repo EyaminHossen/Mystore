@@ -1,0 +1,8 @@
+{
+  "name": "Remix AmarShop BD - E-Commerce Platform",
+  "description": "Complete modern and responsive e-commerce platform for Bangladesh with customer store, cash on delivery, and secure role-based admin panel.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

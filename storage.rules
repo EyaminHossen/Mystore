@@ -1,0 +1,15 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      // Anyone can read images
+      allow read: if true;
+      // Authenticated users or admins can upload images up to 10MB with image content-type
+      allow create, update: if request.auth != null
+                   && request.resource.size < 10 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+      // Authenticated users or admins can delete images
+      allow delete: if request.auth != null;
+    }
+  }
+}

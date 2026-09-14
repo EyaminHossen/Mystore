@@ -1,0 +1,160 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == "eamin6781@gmail.com" ||
+        request.auth.token.email == "ea01955311496@gmail.com" ||
+        request.auth.token.email == "prostutiappe@gmail.com" ||
+        request.auth.token.email == "fifa44597@gmail.com" ||
+        (exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == "superadmin" &&
+         get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.isActive == true) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "superadmin" ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email == "eamin6781@gmail.com" ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email == "ea01955311496@gmail.com" ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email == "prostutiappe@gmail.com" ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email == "fifa44597@gmail.com"))
+      );
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        isSuperAdmin() ||
+        (exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.isActive == true) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin" ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "superadmin" ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true))
+      );
+    }
+
+    function hasAdminPermission(perm) {
+      return isSuperAdmin() || (
+        isAdmin() && (
+          (exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+           (perm in get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.permissions ||
+            'all' in get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.permissions)) ||
+          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin" ||
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "superadmin" ||
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true))
+        )
+      );
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Settings collection
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if hasAdminPermission('settings') || isSuperAdmin();
+    }
+
+    // WebsiteSettings collection
+    match /websiteSettings/{settingId} {
+      allow read: if true;
+      allow write: if hasAdminPermission('settings') || isSuperAdmin();
+    }
+
+    // Sliders collection
+    match /sliders/{sliderId} {
+      allow read: if true;
+      allow write: if hasAdminPermission('marketing') || hasAdminPermission('content') || isSuperAdmin();
+    }
+
+    // Categories collection
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if hasAdminPermission('categories') || hasAdminPermission('products') || hasAdminPermission('content') || isSuperAdmin();
+    }
+
+    // Products collection
+    match /products/{productId} {
+      allow read: if true;
+      allow create, update, delete: if hasAdminPermission('products') || isSuperAdmin();
+      // Allow customers to decrement stock atomically when order is placed
+      allow update: if isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'soldCount', 'updatedAt']);
+
+      match /reviews/{reviewId} {
+        allow read: if true;
+        allow create: if true;
+        allow update, delete: if isSuperAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      }
+    }
+
+    // Orders collection
+    match /orders/{orderId} {
+      allow list: if true;
+      allow get: if true;
+      allow create: if true;
+      // Real Firestore order updates permitted for admin order processing and status synchronization
+      allow update: if true;
+      allow delete: if isSuperAdmin() || isAdmin() || hasAdminPermission('orders');
+    }
+
+    // Coupons collection
+    match /coupons/{couponId} {
+      allow read: if true;
+      allow create, update, delete: if isSuperAdmin() || isAdmin() || hasAdminPermission('marketing');
+      allow write: if isSuperAdmin() || isAdmin() || hasAdminPermission('marketing');
+    }
+
+    // Discounts collection
+    match /discounts/{discountId} {
+      allow read: if true;
+      allow create, update, delete: if isSuperAdmin() || isAdmin() || hasAdminPermission('marketing');
+      allow write: if isSuperAdmin() || isAdmin() || hasAdminPermission('marketing');
+    }
+
+    // Events collection (promotional events and offers)
+    match /events/{eventId} {
+      allow read: if true;
+      allow write: if hasAdminPermission('marketing') || isSuperAdmin();
+    }
+
+    // Users collection (customers)
+    match /users/{userId} {
+      allow read: if isOwner(userId) || hasAdminPermission('customers') || isSuperAdmin();
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isOwner(userId) || hasAdminPermission('customers') || isSuperAdmin();
+      allow delete: if isSuperAdmin() &&
+        resource.data.email != "eamin6781@gmail.com" &&
+        resource.data.email != "ea01955311496@gmail.com" &&
+        userId != request.auth.uid;
+    }
+
+    // Admins collection
+    match /admins/{adminId} {
+      allow read: if isSignedIn();
+      allow create: if isSuperAdmin();
+      allow update: if isSuperAdmin();
+      allow delete: if isSuperAdmin() &&
+        resource.data.email != "eamin6781@gmail.com" &&
+        resource.data.email != "ea01955311496@gmail.com" &&
+        adminId != request.auth.uid;
+    }
+
+    // Reviews collection
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update, delete: if isSuperAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+    }
+  }
+}
